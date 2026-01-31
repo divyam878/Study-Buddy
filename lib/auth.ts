@@ -46,6 +46,13 @@ export const authOptions: NextAuthOptions = {
         GoogleProvider({
             clientId: process.env.GOOGLE_CLIENT_ID ?? "",
             clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+            authorization: {
+                params: {
+                    prompt: "consent",
+                    access_type: "offline",
+                    response_type: "code"
+                }
+            }
         }),
     ],
     callbacks: {
@@ -67,9 +74,21 @@ export const authOptions: NextAuthOptions = {
 
             return true;
         },
-        async jwt({ token, user }) {
+        async jwt({ token, user, account }) {
+            // First sign in
             if (user) {
-                token.id = user.id;
+                // If it's a provider sign-in (like Google), 'user.id' is the Provider ID, not our DB ID.
+                // We need to fetch our DB user to get the real _id.
+                if (account?.provider === "google") {
+                    await dbConnect();
+                    const dbUser = await User.findOne({ email: user.email });
+                    if (dbUser) {
+                        token.id = dbUser._id.toString();
+                    }
+                } else {
+                    // Credentials provider returns the DB ID directly in 'user.id' (see authorize above)
+                    token.id = user.id;
+                }
             }
             return token;
         },
